@@ -326,6 +326,7 @@ type CallInfo = {
     Name : string
     Arguments : string
     LineRange : LineRangeSpecifier
+    IsScriptLocal : bool
 }
 
 type FunctionDefinition = {
@@ -448,7 +449,7 @@ and [<RequireQualifiedAccess>] LineCommand =
 
     /// Display the contents of registers.  Unless a specific register name is 
     /// given all registers will be displayed
-    | DisplayRegisters of RegisterName option
+    | DisplayRegisters of RegisterName list
 
     /// Display the specified marks.  If no Mark values are provided then display 
     /// all marks
@@ -487,6 +488,9 @@ and [<RequireQualifiedAccess>] LineCommand =
 
     /// Go to the previous tab
     | GoToPreviousTab of int option
+
+    /// Get help on VsVim
+    | Help
 
     /// Print out the default history 
     | History
@@ -618,6 +622,9 @@ and [<RequireQualifiedAccess>] LineCommand =
     /// Process the 'source' command.  
     | Source of bool * string
 
+    /// Process the 'tabnew' / 'tabedit' commands.  The optional string represents the file path 
+    | TabNew of string option
+
     /// The version command
     | Version
 
@@ -679,7 +686,7 @@ type IVimInterpreter =
     abstract GetLineRange : lineRange : LineRangeSpecifier -> SnapshotLineRange option
 
     /// Run the LineCommand
-    abstract RunLineCommand : lineCommand : LineCommand -> RunResult
+    abstract RunLineCommand : lineCommand : LineCommand -> unit
 
     /// Run the Expression
     abstract RunExpression : expression : Expression -> VariableValue

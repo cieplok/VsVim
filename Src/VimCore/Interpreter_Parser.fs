@@ -6,6 +6,11 @@ open System.Collections.Generic
 open StringBuilderExtensions
 
 [<RequireQualifiedAccess>]
+type ParseRegisterName =
+    | All
+    | NoNumbered
+
+[<RequireQualifiedAccess>]
 type ParseResult<'T> = 
     | Succeeded of 'T
     | Failed of string
@@ -135,6 +140,7 @@ type Parser
         ("fold", "fo")
         ("function", "fu")
         ("global", "g")
+        ("help", "h")
         ("history", "his")
         ("if", "if")
         ("join", "j")
@@ -163,8 +169,10 @@ type Parser
         ("smagic", "sm")
         ("snomagic", "sno")
         ("t", "t")
+        ("tabedit", "tabe")
         ("tabfirst", "tabfir")
         ("tablast", "tabl")
+        ("tabnew", "tabnew")
         ("tabnext", "tabn")
         ("tabNext", "tabN")
         ("tabprevious", "tabp")
@@ -174,7 +182,7 @@ type Parser
         ("vglobal", "v")
         ("version", "ve")
         ("vscmd", "vsc")
-        ("vsplit", "vsp")
+        ("vsplit", "vs")
         ("write","w")
         ("wq", "")
         ("wall", "wa")
@@ -315,7 +323,10 @@ type Parser
 
     member x.IsDone = _tokenizer.IsAtEndOfLine && _lineIndex  + 1 >= _lines.Length
 
-    member x.IsTokenSequence texts = 
+    /// Parse out the token stream so long as it matches the input.  If everything matches
+    /// the tokens will be consumed and 'true' will be returned.  Else 'false' will be 
+    /// returned and the token stream will be unchanged
+    member x.ParseTokenSequence texts = 
         let mark = _tokenizer.Mark
         let mutable all = true
         for text in texts do
@@ -328,6 +339,10 @@ type Parser
             _tokenizer.MoveToMark mark
 
         all
+
+    member x.ParseScriptLocalPrefix() = 
+        x.ParseTokenSequence [| "<"; "SID"; ">" |] ||
+        x.ParseTokenSequence [| "s"; ":" |]
 
     /// Reset the parser to the given set of input lines.  
     member x.Reset (lines : string[]) = 
@@ -356,6 +371,15 @@ type Parser
 
         _tokenizer.MoveToMark mark
         allBlank
+
+    /// Parse the remainder of the line as a file path.  If there is nothing else on the line
+    /// then None will be returned 
+    member x.ParseRestOfLineAsFilePath() = 
+        x.SkipBlanks()
+        if _tokenizer.IsAtEndOfLine then
+            None
+        else
+            x.ParseRestOfLine() |> Some
 
     /// Move to the next line of the input.  This will move past blank lines and return true if 
     /// the result is a non-blank line which can be processed
@@ -614,15 +638,20 @@ type Parser
         inner (fun x -> x)
 
     /// Parse out a register value from the text.  This will not parse out numbered register
-    member x.ParseRegisterName () = 
+    member x.ParseRegisterName kind = 
         let c = _tokenizer.CurrentChar 
-        if CharUtil.IsDigit c then
-            None
-        else
+        let isGood = 
+            match kind with 
+            | ParseRegisterName.All -> true
+            | ParseRegisterName.NoNumbered -> not (CharUtil.IsDigit c)
+        
+        if isGood then
             let name = RegisterName.OfChar c
             if Option.isSome name then
                 _tokenizer.MoveNextChar()
             name
+        else
+            None
 
     /// Used to parse out the flags for substitute commands.  Will not modify the 
     /// stream if there are no flags
@@ -831,6 +860,8 @@ type Parser
 
     member x.ParseCall lineRange = 
         x.SkipBlanks()
+
+        let isScriptLocal = x.ParseScriptLocalPrefix()
         match _tokenizer.CurrentTokenKind with
         | TokenKind.Word name ->
             _tokenizer.MoveNextToken()
@@ -839,6 +870,7 @@ type Parser
                 LineRange = lineRange
                 Name = name
                 Arguments = arguments
+                IsScriptLocal = isScriptLocal
             }
             LineCommand.Call callInfo 
         | _ -> LineCommand.ParseError Resources.Parser_Error
@@ -847,12 +879,7 @@ type Parser
     member x.ParseChangeDirectory() =
         // Bang is allowed but has no effect
         x.ParseBang() |> ignore
-        x.SkipBlanks()
-        let path = 
-            if _tokenizer.IsAtEndOfLine then
-                None
-            else
-                x.ParseRestOfLine() |> Some
+        let path = x.ParseRestOfLineAsFilePath()
         LineCommand.ChangeDirectory path
 
     /// Parse out the change local directory command.  The path here is optional
@@ -898,7 +925,7 @@ type Parser
     /// Parse out the :delete command
     member x.ParseDelete lineRange = 
         x.SkipBlanks()
-        let name = x.ParseRegisterName()
+        let name = x.ParseRegisterName ParseRegisterName.NoNumbered
         x.SkipBlanks()
         let lineRange = LineRangeSpecifier.WithEndCount (lineRange, x.ParseNumber())
         LineCommand.Delete (lineRange, name)
@@ -1044,10 +1071,7 @@ type Parser
 
         let lineCommand = _lineCommandBuilder { 
             // Lower case names are allowed when the name is prefixed with <SID> or s: 
-            let isScriptLocal = 
-                x.IsTokenSequence [| "<"; "SID"; ">" |] ||
-                x.IsTokenSequence [| "s"; ":" |]
-                
+            let isScriptLocal = x.ParseScriptLocalPrefix()
             let! name = parseFunctionName isScriptLocal
             let! args = parseFunctionArguments ()
             let isAbort, isDict, isRange, isError = parseModifiers ()
@@ -1468,6 +1492,11 @@ type Parser
 
         result
 
+    /// Parse out the 'tabnew' / 'tabedit' commands.  They have the same set of arguments
+    member x.ParseTabNew() = 
+        let filePath = x.ParseRestOfLineAsFilePath()
+        LineCommand.TabNew filePath
+
     /// Parse out the 'tabnext' command
     member x.ParseTabNext() =   
         x.SkipBlanks()
@@ -1593,7 +1622,7 @@ type Parser
     /// Parse out the yank command
     member x.ParseYank lineRange =
         x.SkipBlanks()
-        let registerName = x.ParseRegisterName()
+        let registerName = x.ParseRegisterName ParseRegisterName.NoNumbered
 
         x.SkipBlanks()
         let count = x.ParseNumber()
@@ -1608,6 +1637,11 @@ type Parser
     member x.ParseGlobal lineRange =
         let hasBang = x.ParseBang()
         x.ParseGlobalCore lineRange (not hasBang)
+
+    /// Parse out the :help command
+    member x.ParseHelp() =
+        _tokenizer.MoveToEndOfLine()
+        LineCommand.Help
 
     /// Parse out the :history command
     member x.ParseHistory() =
@@ -1714,7 +1748,7 @@ type Parser
     member x.ParsePut lineRange =
         let hasBang = x.ParseBang()
         x.SkipBlanks()
-        let registerName = x.ParseRegisterName()
+        let registerName = x.ParseRegisterName ParseRegisterName.NoNumbered
 
         if hasBang then
             LineCommand.PutBefore (lineRange, registerName)
@@ -1882,9 +1916,18 @@ type Parser
     /// Parse out the :display and :registers command.  Just takes a single argument 
     /// which is the register name
     member x.ParseDisplayRegisters () = 
-        x.SkipBlanks()
-        let name = x.ParseRegisterName()
-        LineCommand.DisplayRegisters name
+        let mutable nameList : RegisterName list = List.Empty
+        let mutable more = true
+        while more do
+            x.SkipBlanks()
+            match x.ParseRegisterName ParseRegisterName.All with
+            | Some name -> 
+                nameList <- name :: nameList
+                more <- true
+            | None -> more <- false
+
+        nameList <- List.rev nameList
+        LineCommand.DisplayRegisters nameList
 
     /// Parse out the :marks command.  Handles both the no argument and argument
     /// case
@@ -1976,6 +2019,7 @@ type Parser
                 | "fold" -> x.ParseFold lineRange
                 | "function" -> noRange x.ParseFunctionStart
                 | "global" -> x.ParseGlobal lineRange
+                | "help" -> noRange x.ParseHelp
                 | "history" -> noRange (fun () -> x.ParseHistory())
                 | "if" -> noRange x.ParseIfStart
                 | "iunmap" -> noRange (fun () -> x.ParseMapUnmap false [KeyRemapMode.Insert])
@@ -2025,9 +2069,11 @@ type Parser
                 | "snoremap"-> noRange (fun () -> x.ParseMapKeysNoRemap false [KeyRemapMode.Select])
                 | "sunmap" -> noRange (fun () -> x.ParseMapUnmap false [KeyRemapMode.Select])
                 | "t" -> x.ParseCopyTo lineRange 
+                | "tabedit" -> noRange x.ParseTabNew
                 | "tabfirst" -> noRange (fun () -> LineCommand.GoToFirstTab)
                 | "tabrewind" -> noRange (fun () -> LineCommand.GoToFirstTab)
                 | "tablast" -> noRange (fun () -> LineCommand.GoToLastTab)
+                | "tabnew" -> noRange x.ParseTabNew
                 | "tabnext" -> noRange x.ParseTabNext 
                 | "tabNext" -> noRange x.ParseTabPrevious
                 | "tabprevious" -> noRange x.ParseTabPrevious

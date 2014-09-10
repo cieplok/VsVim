@@ -12,7 +12,7 @@ using Vim.Extensions;
 using Vim.UI.Wpf;
 using EditorUtils;
 
-namespace VsVim.Implementation.ExternalEdit
+namespace Vim.VisualStudio.Implementation.ExternalEdit
 {
     internal sealed class ExternalEditMonitor
     {
@@ -142,7 +142,7 @@ namespace VsVim.Implementation.ExternalEdit
         /// </summary>
         internal void PerformCheck(CheckKind kind)
         {
-            if (!_vimApplicationSettings.EnableExternalEditMonitoring)
+            if (!_vimApplicationSettings.EnableExternalEditMonitoring || _buffer.ModeKind == ModeKind.Disabled)
             {
                 return;
             }

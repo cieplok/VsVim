@@ -580,9 +580,9 @@ namespace Vim.UnitTest
 
         #region InsertCommand
 
-        public static InsertCommand.DirectInsert AsDirectInsert(this InsertCommand command)
+        public static InsertCommand.Insert AsInsert(this InsertCommand command)
         {
-            return (InsertCommand.DirectInsert)command;
+            return (InsertCommand.Insert)command;
         }
 
         #endregion
@@ -694,16 +694,6 @@ namespace Vim.UnitTest
         {
             Assert.True(value.IsNumber);
             return (SettingValue.Number)value;
-        }
-
-        #endregion
-
-        #region RunResult
-
-        public static RunResult.SubstituteConfirm AsSubstituteConfirm(this RunResult result)
-        {
-            Assert.True(result.IsSubstituteConfirm);
-            return (RunResult.SubstituteConfirm)result;
         }
 
         #endregion

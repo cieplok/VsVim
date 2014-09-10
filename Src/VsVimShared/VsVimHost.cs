@@ -18,7 +18,7 @@ using Microsoft.VisualStudio.Shell.Interop;
 using Microsoft.VisualStudio;
 using Microsoft.FSharp.Core;
 
-namespace VsVim
+namespace Vim.VisualStudio
 {
     /// <summary>
     /// Implement the IVimHost interface for Visual Studio functionality.  It's not responsible for 
@@ -31,6 +31,88 @@ namespace VsVim
     [TextViewRole(PredefinedTextViewRoles.Editable)]
     internal sealed class VsVimHost : VimHost, IVsSelectionEvents
     {
+        #region SettingsSource
+
+        /// <summary>
+        /// This class provides the ability to control our host specific settings using the familiar
+        /// :set syntax in a vim file.  It is just proxying them to the real IVimApplicationSettings
+        /// </summary>
+        internal sealed class SettingsSource : IVimCustomSettingSource
+        {
+            private const string UseEditorIndentName = "vsvim_useeditorindent";
+            private const string UseEditorDefaultsName = "vsvim_useeditordefaults";
+            private const string UseEditorTabAndBackspaceName = "vsvim_useeditortab";
+
+            private readonly IVimApplicationSettings _vimApplicationSettings;
+
+            private SettingsSource(IVimApplicationSettings vimApplicationSettings)
+            {
+                _vimApplicationSettings = vimApplicationSettings;
+            }
+
+            internal static void Initialize(IVimGlobalSettings globalSettings, IVimApplicationSettings vimApplicationSettings)
+            {
+                var settingsSource = new SettingsSource(vimApplicationSettings);
+                globalSettings.AddCustomSetting(UseEditorIndentName, UseEditorIndentName, settingsSource);
+                globalSettings.AddCustomSetting(UseEditorDefaultsName, UseEditorDefaultsName, settingsSource);
+                globalSettings.AddCustomSetting(UseEditorTabAndBackspaceName, UseEditorTabAndBackspaceName, settingsSource);
+            }
+
+            SettingValue IVimCustomSettingSource.GetDefaultSettingValue(string name)
+            {
+                return SettingValue.NewToggle(true);
+            }
+
+            SettingValue IVimCustomSettingSource.GetSettingValue(string name)
+            {
+                bool value;
+                switch (name)
+                {
+                    case UseEditorIndentName:
+                        value = _vimApplicationSettings.UseEditorIndent;
+                        break;
+                    case UseEditorDefaultsName:
+                        value = _vimApplicationSettings.UseEditorDefaults;
+                        break;
+                    case UseEditorTabAndBackspaceName:
+                        value = _vimApplicationSettings.UseEditorTabAndBackspace;
+                        break;
+                    default:
+                        value = false;
+                        break;
+                }
+
+                return SettingValue.NewToggle(value);
+            }
+
+            void IVimCustomSettingSource.SetSettingValue(string name, SettingValue settingValue)
+            {
+                if (!settingValue.IsToggle)
+                {
+                    return;
+                }
+
+                bool value = ((SettingValue.Toggle)settingValue).Item;
+                switch (name)
+                {
+                    case UseEditorIndentName:
+                        _vimApplicationSettings.UseEditorIndent = value;
+                        break;
+                    case UseEditorDefaultsName:
+                        _vimApplicationSettings.UseEditorDefaults = value;
+                        break;
+                    case UseEditorTabAndBackspaceName:
+                        _vimApplicationSettings.UseEditorTabAndBackspace = value;
+                        break;
+                    default:
+                        value = false;
+                        break;
+                }
+            }
+        }
+
+#endregion
+
         internal const string CommandNameGoToDefinition = "Edit.GoToDefinition";
 
         private readonly IVsAdapter _vsAdapter;
@@ -40,7 +122,9 @@ namespace VsVim
         private readonly IVsExtensibility _vsExtensibility;
         private readonly ISharedService _sharedService;
         private readonly IVsMonitorSelection _vsMonitorSelection;
-        private readonly IFontProperties _fontProperties;
+        private readonly IVimApplicationSettings _vimApplicationSettings;
+        private readonly ISmartIndentationService _smartIndentationService;
+        private IVim _vim;
 
         internal _DTE DTE
         {
@@ -51,28 +135,28 @@ namespace VsVim
         /// Should we create IVimBuffer instances for new ITextView values
         /// </summary>
         public bool DisableVimBufferCreation
-        { 
-            get; 
-            set; 
+        {
+            get;
+            set;
         }
 
         /// <summary>
-        /// Don't automatically synchronize settings.  Visual Studio applies settings at uncertain times and hence this
-        /// behavior must be special cased.  It is handled by HostFactory
+        /// Don't automatically synchronize settings.  The settings can't be synchronized until after Visual Studio 
+        /// applies settings which happens at an uncertain time.  HostFactory handles this timing 
         /// </summary>
         public override bool AutoSynchronizeSettings
         {
             get { return false; }
         }
 
+        public override DefaultSettings DefaultSettings
+        {
+            get { return _vimApplicationSettings.DefaultSettings; }
+        }
+
         public override int TabCount
         {
             get { return _sharedService.GetWindowFrameState().WindowFrameCount; }
-        }
-
-        public override IFontProperties FontProperties
-        {
-            get { return _fontProperties; }
         }
 
         [ImportingConstructor]
@@ -84,8 +168,10 @@ namespace VsVim
             ITextBufferUndoManagerProvider undoManagerProvider,
             IVsEditorAdaptersFactoryService editorAdaptersFactoryService,
             IEditorOperationsFactoryService editorOperationsFactoryService,
+            ISmartIndentationService smartIndentationService,
             ITextManager textManager,
             ISharedServiceFactory sharedServiceFactory,
+            IVimApplicationSettings vimApplicationSettings,
             SVsServiceProvider serviceProvider)
             : base(textBufferFactoryService, textEditorFactoryService, textDocumentFactoryService, editorOperationsFactoryService)
         {
@@ -96,16 +182,25 @@ namespace VsVim
             _textManager = textManager;
             _sharedService = sharedServiceFactory.Create();
             _vsMonitorSelection = serviceProvider.GetService<SVsShellMonitorSelection, IVsMonitorSelection>();
-            _fontProperties = new TextEditorFontProperties(serviceProvider);
+            _vimApplicationSettings = vimApplicationSettings;
+            _smartIndentationService = smartIndentationService;
 
             uint cookie;
             _vsMonitorSelection.AdviseSelectionEvents(this, out cookie);
         }
 
-        private bool SafeExecuteCommand(string command, string args = "")
+        private bool SafeExecuteCommand(ITextView contextTextView, string command, string args = "")
         {
             try
             {
+                // Many Visual Studio commands expect focus to be in the editor when 
+                // running.  Switch focus there if an appropriate ITextView is available
+                var wpfTextView = contextTextView as IWpfTextView;
+                if (wpfTextView != null)
+                {
+                    wpfTextView.VisualElement.Focus();
+                }
+
                 _dte.ExecuteCommand(command, args);
                 return true;
             }
@@ -121,7 +216,7 @@ namespace VsVim
         private static string GetCPlusPlusIdentifier(ITextView textView)
         {
             var snapshot = textView.TextSnapshot;
-            Func<int, bool> isValid = (position) => 
+            Func<int, bool> isValid = (position) =>
             {
                 if (position < 0 || position >= snapshot.Length)
                 {
@@ -166,10 +261,10 @@ namespace VsVim
 
             if (target != null)
             {
-                return SafeExecuteCommand(CommandNameGoToDefinition, target);
+                return SafeExecuteCommand(textView, CommandNameGoToDefinition, target);
             }
 
-            return SafeExecuteCommand(CommandNameGoToDefinition);
+            return SafeExecuteCommand(textView, CommandNameGoToDefinition);
         }
 
         private bool GoToDefinitionCore(ITextView textView, string target)
@@ -179,7 +274,7 @@ namespace VsVim
                 return GoToDefinitionCPlusPlus(textView, target);
             }
 
-            return SafeExecuteCommand(CommandNameGoToDefinition);
+            return SafeExecuteCommand(textView, CommandNameGoToDefinition);
         }
 
         /// <summary>
@@ -220,7 +315,8 @@ namespace VsVim
             var startedWithSelection = !textView.Selection.IsEmpty;
             textView.Selection.Clear();
             textView.Selection.Select(range.ExtentIncludingLineBreak, false);
-            SafeExecuteCommand("Edit.FormatSelection");
+            SafeExecuteCommand(textView, "Edit.FormatSelection");
+
             if (!startedWithSelection)
             {
                 textView.Selection.Clear();
@@ -237,7 +333,7 @@ namespace VsVim
                 return false;
             }
 
-            // Certian language services, VB.Net for example, will select the word after
+            // Certain language services, VB.Net for example, will select the word after
             // the go to definition is implemented.  Need to clear that out to prevent the
             // go to definition from switching us to Visual Mode
             // 
@@ -258,7 +354,7 @@ namespace VsVim
         /// mimic the behavior by opening the document in a new window and closing the
         /// existing one
         /// </summary>
-        public override HostResult LoadFileIntoExistingWindow(string filePath, ITextView textView)
+        public override bool LoadFileIntoExistingWindow(string filePath, ITextView textView)
         {
             try
             {
@@ -267,27 +363,29 @@ namespace VsVim
                 // message
                 VsShellUtilities.OpenDocument(_vsAdapter.ServiceProvider, filePath);
                 _textManager.CloseView(textView);
-                return HostResult.Success;
+                return true;
             }
             catch (Exception e)
             {
-                return HostResult.NewError(e.Message);
+                _vim.ActiveStatusUtil.OnError(e.Message);
+                return false;
             }
         }
 
         /// <summary>
         /// Open up a new document window with the specified file
         /// </summary>
-        public override HostResult LoadFileIntoNewWindow(string filePath)
+        public override bool LoadFileIntoNewWindow(string filePath)
         {
             try
             {
                 VsShellUtilities.OpenDocument(_vsAdapter.ServiceProvider, filePath);
-                return HostResult.Success;
+                return true;
             }
             catch (Exception e)
             {
-                return HostResult.NewError(e.Message);
+                _vim.ActiveStatusUtil.OnError(e.Message);
+                return false;
             }
         }
 
@@ -370,16 +468,15 @@ namespace VsVim
                 : "View.PreviousError";
             for (var i = 0; i < count; i++)
             {
-                SafeExecuteCommand(command);
+                SafeExecuteCommand(null, command);
             }
 
             return true;
         }
 
-        public override HostResult Make(bool jumpToFirstError, string arguments)
+        public override void Make(bool jumpToFirstError, string arguments)
         {
-            SafeExecuteCommand("Build.BuildSolution");
-            return HostResult.Success;
+            SafeExecuteCommand(null, "Build.BuildSolution");
         }
 
         public override bool TryGetFocusedTextView(out ITextView textView)
@@ -417,40 +514,38 @@ namespace VsVim
             _dte.Quit();
         }
 
-        public override void RunVisualStudioCommand(string command, string argument)
+        public override void RunVisualStudioCommand(ITextView textView, string command, string argument)
         {
-            SafeExecuteCommand(command, argument);
+            SafeExecuteCommand(textView, command, argument);
         }
 
         /// <summary>
         /// Perform a horizontal window split 
         /// </summary>
-        public override HostResult SplitViewHorizontally(ITextView textView)
+        public override void SplitViewHorizontally(ITextView textView)
         {
             _textManager.SplitView(textView);
-            return HostResult.Success;
         }
 
         /// <summary>
         /// Perform a vertical buffer split, which is essentially just another window in a different tab group.
         /// </summary>
-        public override HostResult SplitViewVertically(ITextView value)
+        public override void SplitViewVertically(ITextView value)
         {
             try
             {
                 _dte.ExecuteCommand("Window.NewWindow");
                 _dte.ExecuteCommand("Window.NewVerticalTabGroup");
-                return HostResult.Success;
             }
             catch (Exception e)
             {
-                return HostResult.NewError(e.Message);
+                _vim.ActiveStatusUtil.OnError(e.Message);
             }
         }
 
-        public override HostResult MoveFocus(ITextView textView, Direction direction)
+        public override void MoveFocus(ITextView textView, Direction direction)
         {
-            bool result = false;
+            bool result;
             switch (direction)
             {
                 case Direction.Up:
@@ -459,9 +554,66 @@ namespace VsVim
                 case Direction.Down:
                     result = _textManager.MoveViewDown(textView);
                     break;
+                case Direction.Left:
+                case Direction.Right:
+                    _vim.ActiveStatusUtil.OnError("Not Implemented");
+                    result = true;
+                    break;
+                default:
+                    throw Contract.GetInvalidEnumException(direction);
             }
 
-            return result ? HostResult.Success : HostResult.NewError("Not Implemented");
+            if (!result)
+            {
+                _vim.ActiveStatusUtil.OnError("Can't move focus");
+            }
+        }
+
+        public override WordWrapStyles GetWordWrapStyle(ITextView textView)
+        {
+            var style = WordWrapStyles.WordWrap;
+            switch (_vimApplicationSettings.WordWrapDisplay)
+            {
+                case WordWrapDisplay.All:
+                    style |= (WordWrapStyles.AutoIndent | WordWrapStyles.VisibleGlyphs);
+                    break;
+                case WordWrapDisplay.Glyph:
+                    style |= WordWrapStyles.VisibleGlyphs;
+                    break;
+                case WordWrapDisplay.AutoIndent:
+                    style |= WordWrapStyles.AutoIndent;
+                    break;
+                default:
+                    Contract.Assert(false);
+                    break;
+            }
+
+            return style;
+        }
+
+        public override FSharpOption<int> GetNewLineIndent(ITextView textView, ITextSnapshotLine contextLine, ITextSnapshotLine newLine)
+        {
+            if (_vimApplicationSettings.UseEditorIndent)
+            {
+                var indent = _smartIndentationService.GetDesiredIndentation(textView, newLine);
+                if (indent.HasValue)
+                {
+                    return FSharpOption.Create(indent.Value);
+                }
+                else
+                {
+                    // If the user wanted editor indentation but the editor doesn't support indentation
+                    // even though it proffers an indentation service then fall back to what auto
+                    // indent would do if it were enabled (don't care if it actually is)
+                    //
+                    // Several editors like XAML offer the indentation service but don't actually 
+                    // provide information.  User clearly wants indent there since the editor indent
+                    // is enabled.  Do a best effort and us Vim style indenting
+                    return FSharpOption.Create(EditUtil.GetAutoIndent(contextLine));
+                }
+            }
+
+            return FSharpOption<int>.None;
         }
 
         public override bool GoToGlobalDeclaration(ITextView textView, string target)
@@ -475,6 +627,12 @@ namespace VsVim
             // there is currently no better way in Visual Studio.  Added this method though
             // so it's easier to plug in later should such an API become available
             return GoToDefinitionCore(textView, target);
+        }
+
+        public override void VimCreated(IVim vim)
+        {
+            _vim = vim;
+            SettingsSource.Initialize(vim.GlobalSettings, _vimApplicationSettings);
         }
 
         public override void VimRcLoaded(VimRcState vimRcState, IVimLocalSettings localSettings, IVimWindowSettings windowSettings)
@@ -500,6 +658,24 @@ namespace VsVim
             }
 
             return !DisableVimBufferCreation;
+        }
+
+        public override bool ShouldIncludeRcFile(VimRcPath vimRcPath)
+        {
+            switch (_vimApplicationSettings.VimRcLoadSetting)
+            {
+                case VimRcLoadSetting.None:
+                    return false;
+                case VimRcLoadSetting.VimRc:
+                    return vimRcPath.VimRcKind == VimRcKind.VimRc;
+                case VimRcLoadSetting.VsVimRc:
+                    return vimRcPath.VimRcKind == VimRcKind.VsVimRc;
+                case VimRcLoadSetting.Both:
+                    return true;
+                default:
+                    Contract.Assert(false);
+                    return base.ShouldIncludeRcFile(vimRcPath);
+            }
         }
 
         #region IVsSelectionEvents

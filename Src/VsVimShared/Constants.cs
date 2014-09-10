@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace VsVim
+namespace Vim.VisualStudio
 {
     // TODO: Rename to VsVimConstants to avoid ambiguity issues
     public static class Constants
@@ -14,11 +14,6 @@ namespace VsVim
         /// Content Type name and display name for C# projects
         /// </summary>
         public const string CSharpContentType = "CSharp";
-
-        /// <summary>
-        /// Name of the main Key Processor
-        /// </summary>
-        public const string VsKeyProcessorName = "VsVim";
 
         /// <summary>
         /// Name of the fallback Key Processor

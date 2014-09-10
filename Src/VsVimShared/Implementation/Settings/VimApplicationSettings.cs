@@ -2,38 +2,36 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel.Composition;
-using System.Globalization;
-using System.Linq;
 using EditorUtils;
-using EnvDTE;
-using Microsoft.VisualStudio;
 using Microsoft.VisualStudio.Settings;
 using Microsoft.VisualStudio.Shell;
-using Microsoft.VisualStudio.Shell.Interop;
-using Microsoft.VisualStudio.Shell.Settings;
 using Vim.UI.Wpf;
 using Vim;
 
-namespace VsVim.Implementation.Settings
+namespace Vim.VisualStudio.Implementation.Settings
 {
     [Export(typeof(IVimApplicationSettings))]
     internal sealed class VimApplicationSettings : IVimApplicationSettings
     {
         internal const string CollectionPath = "VsVim";
         internal const string DefaultSettingsName = "DefaultSettings";
-        internal const string EnableExternalEditMonitoring = "EnableExternalEditMonitoring";
+        internal const string DisplayControlCharsName = "DisplayControlChars";
+        internal const string EnableExternalEditMonitoringName = "EnableExternalEditMonitoring";
+        internal const string VimRcLoadSettingName = "VimRcLoadSetting";
         internal const string HaveUpdatedKeyBindingsName = "HaveUpdatedKeyBindings";
-        internal const string HaveNotifiedBackspaceSetting = "HaveNotifiedBackspaceSetting";
+        internal const string HaveNotifiedVimRcLoadName = "HaveNotifiedVimRcLoad";
         internal const string IgnoredConflictingKeyBindingName = "IgnoredConflictingKeyBinding";
         internal const string RemovedBindingsName = "RemovedBindings";
-        internal const string LegacySettingsMigratedName = "LegacySettingsMigrated";
         internal const string KeyMappingIssueFixedName = "EnterDeletekeyMappingIssue";
+        internal const string UseEditorIndentName = "UseEditorIndent";
+        internal const string UseEditorDefaultsName = "UseEditorDefaults";
+        internal const string UseEditorTabAndBackspaceName = "UseEditorTabAndBackspace";
+        internal const string WordWrapDisplayName = "WordWrapDisplay";
         internal const string ErrorGetFormat = "Cannot get setting {0}";
         internal const string ErrorSetFormat = "Cannot set setting {0}";
 
         private readonly WritableSettingsStore _settingsStore;
         private readonly IVimProtectedOperations _protectedOperations;
-        private readonly bool _legacySettingsSupported;
 
         internal event EventHandler<ApplicationSettingsEventArgs> SettingsChanged;
 
@@ -46,72 +44,19 @@ namespace VsVim.Implementation.Settings
             }
         }
 
-        internal bool LegacySettingsMigrated
-        {
-            get
-            {
-                if (_legacySettingsSupported)
-                {
-                    return GetBoolean(LegacySettingsMigratedName, false);
-                }
-
-                return true;
-            }
-            set
-            {
-                if (_legacySettingsSupported)
-                {
-                    SetBoolean(LegacySettingsMigratedName, value);
-                }
-            }
-        }
-
         [ImportingConstructor]
         internal VimApplicationSettings(
             SVsServiceProvider vsServiceProvider,
-            ILegacySettings legacySettings,
             IVimProtectedOperations protectedOperations)
             : this(vsServiceProvider.GetVisualStudioVersion(), vsServiceProvider.GetWritableSettingsStore(), protectedOperations)
         {
-            var dte = vsServiceProvider.GetService<SDTE, _DTE>();
-            MigrateLegacySettings(dte, legacySettings);
+
         }
 
         internal VimApplicationSettings(VisualStudioVersion visualStudioVersion, WritableSettingsStore settingsStore, IVimProtectedOperations protectedOperations)
         {
             _settingsStore = settingsStore;
             _protectedOperations = protectedOperations;
-
-            // Legacy settings were only supported on Visual Studio 2010 and 2012.  For any other version there is no
-            // need to modify the legacy settings
-            switch (visualStudioVersion)
-            {
-                case VisualStudioVersion.Vs2010:
-                case VisualStudioVersion.Vs2012:
-                    _legacySettingsSupported = true;
-                    break;
-                default:
-                    // Intentionally do nothing 
-                    break;
-            }
-        }
-
-        /// <summary>
-        /// Migrate the legacy settings into our new storage if necessary
-        /// </summary>
-        internal void MigrateLegacySettings(_DTE dte, ILegacySettings legacySettings)
-        {
-            if (!LegacySettingsMigrated)
-            {
-                var legacySettingsUsed = legacySettings.HaveUpdatedKeyBindings || legacySettings.IgnoredConflictingKeyBinding || legacySettings.RemovedBindings.Count > 0;
-                if (legacySettingsUsed)
-                {
-                    var settingsMigrator = new SettingsMigrator(dte, this, legacySettings);
-                    settingsMigrator.DoMigration();
-                }
-
-                LegacySettingsMigrated = true;
-            }
         }
 
         internal bool GetBoolean(string propertyName, bool defaultValue)
@@ -241,14 +186,44 @@ namespace VsVim.Implementation.Settings
 
         DefaultSettings IVimApplicationSettings.DefaultSettings
         {
-            get { return GetEnum(DefaultSettingsName, defaultValue: DefaultSettings.GVim74); }
+            get { return GetEnum(DefaultSettingsName, defaultValue: DefaultSettings.GVim73); }
             set { SetEnum(DefaultSettingsName, value); }
+        }
+
+        VimRcLoadSetting IVimApplicationSettings.VimRcLoadSetting
+        {
+            get { return GetEnum(VimRcLoadSettingName, defaultValue: VimRcLoadSetting.Both); }
+            set { SetEnum(VimRcLoadSettingName, value); }
+        }
+
+        bool IVimApplicationSettings.DisplayControlChars
+        {
+            get { return GetBoolean(DisplayControlCharsName, defaultValue: true); }
+            set { SetBoolean(DisplayControlCharsName, value); }
         }
 
         bool IVimApplicationSettings.EnableExternalEditMonitoring
         {
-            get { return GetBoolean(EnableExternalEditMonitoring, defaultValue: true); }
-            set { SetBoolean(EnableExternalEditMonitoring, value); }
+            get { return GetBoolean(EnableExternalEditMonitoringName, defaultValue: true); }
+            set { SetBoolean(EnableExternalEditMonitoringName, value); }
+        }
+
+        bool IVimApplicationSettings.UseEditorDefaults
+        {
+            get { return GetBoolean(UseEditorDefaultsName, defaultValue: true); }
+            set { SetBoolean(UseEditorDefaultsName, value); }
+        }
+
+        bool IVimApplicationSettings.UseEditorIndent
+        {
+            get { return GetBoolean(UseEditorIndentName, defaultValue: true); }
+            set { SetBoolean(UseEditorIndentName, value); }
+        }
+
+        bool IVimApplicationSettings.UseEditorTabAndBackspace
+        {
+            get { return GetBoolean(UseEditorTabAndBackspaceName, defaultValue: true); }
+            set { SetBoolean(UseEditorTabAndBackspaceName, value); }
         }
 
         bool IVimApplicationSettings.HaveUpdatedKeyBindings
@@ -257,10 +232,10 @@ namespace VsVim.Implementation.Settings
             set { SetBoolean(HaveUpdatedKeyBindingsName, value); }
         }
 
-        bool IVimApplicationSettings.HaveNotifiedBackspaceSetting
+        bool IVimApplicationSettings.HaveNotifiedVimRcLoad
         {
-            get { return GetBoolean(HaveNotifiedBackspaceSetting, defaultValue: false); }
-            set { SetBoolean(HaveNotifiedBackspaceSetting, value); }
+            get { return GetBoolean(HaveNotifiedVimRcLoadName, defaultValue: false); }
+            set { SetBoolean(HaveNotifiedVimRcLoadName, value); }
         }
 
         bool IVimApplicationSettings.IgnoredConflictingKeyBinding
@@ -273,6 +248,12 @@ namespace VsVim.Implementation.Settings
         {
             get { return GetBoolean(KeyMappingIssueFixedName, defaultValue: false); }
             set { SetBoolean(KeyMappingIssueFixedName, value); }
+        }
+
+        WordWrapDisplay IVimApplicationSettings.WordWrapDisplay
+        {
+            get { return GetEnum<WordWrapDisplay>(WordWrapDisplayName, WordWrapDisplay.Glyph); }
+            set { SetEnum(WordWrapDisplayName, value); }
         }
 
         ReadOnlyCollection<CommandKeyBinding> IVimApplicationSettings.RemovedBindings

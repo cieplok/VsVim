@@ -7,14 +7,14 @@ using Microsoft.VisualStudio.Text.Editor;
 using Vim;
 using Vim.UI.Wpf;
 
-namespace VsVim.Implementation.Misc
+namespace Vim.VisualStudio.Implementation.Misc
 {
     /// <summary>
     /// This is the Visual Studio specific implementation of the typical Vim key processor.  The
     /// base key processor is sufficient to actually handle most types of input.  Unfortunately 
     /// there are Visual Studio specific quirks we need to handle.  
     /// </summary>
-    internal sealed class VsKeyProcessor : VimKeyProcessor
+    internal sealed class VsVimKeyProcessor : VimKeyProcessor
     {
         private readonly IVsAdapter _adapter;
         private readonly IVimBufferCoordinator _bufferCoordinator;
@@ -28,7 +28,7 @@ namespace VsVim.Implementation.Misc
             get { return _keyDownCount; }
         }
 
-        internal VsKeyProcessor(IVsAdapter adapter, IVimBufferCoordinator bufferCoordinator, IKeyUtil keyUtil, IReportDesignerUtil reportDesignerUtil)
+        internal VsVimKeyProcessor(IVsAdapter adapter, IVimBufferCoordinator bufferCoordinator, IKeyUtil keyUtil, IReportDesignerUtil reportDesignerUtil)
             : base(bufferCoordinator.VimBuffer, keyUtil)
         {
             _adapter = adapter;

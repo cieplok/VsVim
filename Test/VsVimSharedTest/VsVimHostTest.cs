@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using EnvDTE;
 using EditorUtils;
 using Microsoft.VisualStudio.Editor;
@@ -15,7 +16,7 @@ using Vim.UnitTest;
 using System.Collections.Generic;
 using Microsoft.VisualStudio;
 
-namespace VsVim.UnitTest
+namespace Vim.VisualStudio.UnitTest
 {
     public abstract class VsVimHostTest : VimTestBase
     {
@@ -27,6 +28,7 @@ namespace VsVim.UnitTest
         private Mock<IVsEditorAdaptersFactoryService> _editorAdaptersFactoryService;
         private Mock<ITextBufferUndoManagerProvider> _undoManagerProvider;
         private Mock<IEditorOperationsFactoryService> _editorOperationsFactoryService;
+        private Mock<IVimApplicationSettings> _vimApplicationSettings;
         private Mock<_DTE> _dte;
         private Mock<IVsUIShell4> _shell;
         private Mock<StatusBar> _statusBar;
@@ -44,6 +46,7 @@ namespace VsVim.UnitTest
             _dte.SetupGet(x => x.StatusBar).Returns(_statusBar.Object);
             _textManager = _factory.Create<ITextManager>();
             _textManager.Setup(x => x.GetDocumentTextViews(DocumentLoad.RespectLazy)).Returns(new List<ITextView>());
+            _vimApplicationSettings = _factory.Create<IVimApplicationSettings>(MockBehavior.Loose);
 
             var vsMonitorSelection = _factory.Create<IVsMonitorSelection>();
             uint cookie = 42;
@@ -62,8 +65,10 @@ namespace VsVim.UnitTest
                 _undoManagerProvider.Object,
                 _editorAdaptersFactoryService.Object,
                 _editorOperationsFactoryService.Object,
+                _factory.Create<ISmartIndentationService>().Object,
                 _textManager.Object,
                 _factory.Create<ISharedServiceFactory>(MockBehavior.Loose).Object,
+                _vimApplicationSettings.Object,
                 sp.Object);
             _host = _hostRaw;
         }
@@ -125,7 +130,7 @@ namespace VsVim.UnitTest
                 {
                     Create();
 
-                    var contentType = GetOrCreateContentType(VsVim.Constants.CPlusPlusContentType, "code");
+                    var contentType = GetOrCreateContentType(Constants.CPlusPlusContentType, "code");
                     _textView = CreateTextView(contentType, lines);
                     _textManager.SetupGet(x => x.ActiveTextViewOptional).Returns(_textView);
                 }
@@ -291,7 +296,7 @@ namespace VsVim.UnitTest
                 var buffer = new Mock<ITextBuffer>(MockBehavior.Strict);
                 var vsTextBuffer = (new Mock<IVsTextLines>(MockBehavior.Strict));
                 var userData = vsTextBuffer.As<IVsUserData>();
-                var moniker = VsVim.Constants.VsUserDataFileNameMoniker;
+                var moniker = Constants.VsUserDataFileNameMoniker;
                 object ret = "foo";
                 userData.Setup(x => x.GetData(ref moniker, out ret)).Returns(0);
                 _editorAdaptersFactoryService.Setup(x => x.GetBufferAdapter(buffer.Object)).Returns(vsTextBuffer.Object);
@@ -307,6 +312,17 @@ namespace VsVim.UnitTest
             {
                 Create();
                 Assert.False(_host.AutoSynchronizeSettings);
+            }
+
+            [Fact]
+            public void DefaultSettingsTiedToApplicationSettings()
+            {
+                Create();
+                foreach (var cur in Enum.GetValues(typeof(DefaultSettings)).Cast<DefaultSettings>())
+                {
+                    _vimApplicationSettings.SetupGet(x => x.DefaultSettings).Returns(cur);
+                    Assert.Equal(cur, _hostRaw.DefaultSettings);
+                }
             }
         }
     }

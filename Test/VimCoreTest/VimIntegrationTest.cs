@@ -50,6 +50,53 @@ namespace Vim.UnitTest
                 var vimBuffer = Vim.CreateVimBuffer(view);
                 Assert.Throws<ArgumentException>(() => Vim.CreateVimBuffer(view));
             }
+
+            /// <summary>
+            /// If we are in the middle of an incremental search and the mode changes the search should be
+            /// cancelled 
+            /// </summary>
+            [Fact]
+            public void ModeSwitchResetIncrementalSearch()
+            {
+                var vimBuffer = CreateVimBuffer("hello world");
+                vimBuffer.ProcessNotation("/wo");
+                Assert.True(vimBuffer.IncrementalSearch.InSearch);
+                vimBuffer.SwitchMode(ModeKind.VisualCharacter, ModeArgument.None);
+                Assert.False(vimBuffer.IncrementalSearch.InSearch);
+            }
+
+            /// <summary>
+            /// Make sure this doesn't leave a hanging empty linked undo transaction
+            /// </summary>
+            [Fact]
+            public void CloseSimpleAppend()
+            {
+                var vimBuffer = CreateVimBuffer("hello world");
+                vimBuffer.ProcessNotation("a");
+                vimBuffer.Close();
+            }
+
+            /// <summary>
+            /// Make sure this doesn't leave a hanging empty linked undo transaction
+            /// </summary>
+            [Fact]
+            public void LeaveSimpleAppend()
+            {
+                var vimBuffer = CreateVimBuffer("hello world");
+                vimBuffer.ProcessNotation("a<Esc>");
+                vimBuffer.Close();
+            }
+
+            /// <summary>
+            /// Make sure this doesn't leave a hanging empty linked undo transaction
+            /// </summary>
+            [Fact]
+            public void LeaveCountedInsert()
+            {
+                var vimBuffer = CreateVimBuffer("hello world");
+                vimBuffer.ProcessNotation("3i<Esc>");
+                vimBuffer.Close();
+            }
         }
 
         public sealed class DisableAllTest : VimIntegrationTest
@@ -105,6 +152,7 @@ namespace Vim.UnitTest
                 _vim = (Vim)Vim;
                 _globalSettings = Vim.GlobalSettings;
                 _fileSystem = new Mock<IFileSystem>();
+                _fileSystem.Setup(x => x.GetVimRcDirectories()).Returns(new string[] { });
                 _originalFileSystem = _vim._fileSystem;
                 _vim._fileSystem = _fileSystem.Object;
                 VimHost.CreateHiddenTextViewFunc = () => TextEditorFactoryService.CreateTextView();
@@ -118,17 +166,24 @@ namespace Vim.UnitTest
 
             private void Run(string vimRcText)
             {
+                var vimRcPath = new VimRcPath(VimRcKind.VimRc, "_vimrc");
                 var lines = vimRcText.Split(new[] { Environment.NewLine }, StringSplitOptions.RemoveEmptyEntries);
-                _fileSystem.Setup(x => x.LoadVimRcContents()).Returns(new FSharpOption<FileContents>(new FileContents("_vimrc", lines)));
+                _fileSystem
+                    .Setup(x => x.GetVimRcFilePaths())
+                    .Returns(new[] { vimRcPath });
+                _fileSystem
+                    .Setup(x => x.ReadAllLines(vimRcPath.FilePath))
+                    .Returns(FSharpOption.Create(lines));
                 Assert.True(Vim.LoadVimRc().IsLoadSucceeded);
             }
 
             private void RunNone()
             {
-                _fileSystem.Setup(x => x.LoadVimRcContents()).Returns(FSharpOption<FileContents>.None);
+                _fileSystem
+                    .Setup(x => x.GetVimRcFilePaths())
+                    .Returns(new VimRcPath[] { });
                 Assert.True(Vim.LoadVimRc().IsLoadFailed);
             }
-
 
             [Theory,
             InlineData(@"set shellcmdflag=-lic", @"-lic"),
@@ -207,23 +262,6 @@ autocmd BufEnter *.html set ts=12
                 Run(text);
                 var vimBuffer = CreateVimBufferWithName("test.html");
                 Assert.Equal(12, vimBuffer.LocalSettings.TabStop);
-            }
-
-            /// <summary>
-            /// If the user has specified that visual studio settings should override vim settings then we don't
-            /// want autocmd running.  They exist only to override settings hence they would be overriding Visual 
-            /// Studio settings
-            /// </summary>
-            [Fact]
-            public void AutoCommandRespectUseVisualStudioSettings()
-            {
-                var text = @"
-set vsvim_useeditordefaults
-autocmd BufEnter *.html set ts=12
-";
-                Run(text);
-                var vimBuffer = CreateVimBufferWithName("test.html");
-                Assert.NotEqual(12, vimBuffer.LocalSettings.TabStop);
             }
 
             [Fact]

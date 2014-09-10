@@ -9,7 +9,7 @@ using Microsoft.VisualStudio.Text.Editor;
 using Microsoft.VisualStudio.Utilities;
 using Vim;
 
-namespace VsVim.Implementation.ReSharper
+namespace Vim.VisualStudio.Implementation.ReSharper
 {
     internal sealed class ReSharperKeyUtil : KeyProcessor, ICommandTarget
     {
@@ -42,7 +42,7 @@ namespace VsVim.Implementation.ReSharper
                 // handled the key stroke to dismiss intellisense.  Leave insert mode now to complete the operation
                 if (_vimBuffer.ModeKind == ModeKind.Insert)
                 {
-                    VimTrace.TraceInfo("ReSharperKeyUtil::PreviewKeyUp handled escape swallowed by Visual Assist");
+                    VimTrace.TraceInfo("ReSharperKeyUtil::PreviewKeyUp handled escape swallowed by ReSharper");
                     _vimBuffer.Process(KeyInputUtil.EscapeKey);
                 }
             }
@@ -179,7 +179,7 @@ namespace VsVim.Implementation.ReSharper
 
     [ContentType(VimConstants.ContentType)]
     [TextViewRole(PredefinedTextViewRoles.Editable)]
-    [Order(Before = Constants.VisualStudioKeyProcessorName, After = Constants.VsKeyProcessorName)]
+    [Order(Before = Constants.VisualStudioKeyProcessorName, After = VimConstants.MainKeyProcessorName)]
     [Export(typeof(IKeyProcessorProvider))]
     [Name("ReSharper Key Processor")]
     internal sealed class ReSharperKeyProcessorProvider : IKeyProcessorProvider

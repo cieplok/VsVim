@@ -10,8 +10,8 @@
     <ProjectGuid>{979DEDC6-25E2-494B-9E8F-6E42078C601C}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>VsVim</RootNamespace>
-    <AssemblyName>VsVim.Shared</AssemblyName>
+    <RootNamespace>Vim.VisualStudio</RootNamespace>
+    <AssemblyName>Vim.VisualStudio.Shared</AssemblyName>
     <FileAlignment>512</FileAlignment>
     <SolutionDir Condition="$(SolutionDir) == '' Or $(SolutionDir) == '*Undefined*'">..\</SolutionDir>
     <RestorePackages>true</RestorePackages>
@@ -34,9 +34,9 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="EditorUtils, Version=1.3.0.0, Culture=neutral, PublicKeyToken=3d1514c4742e0252, processorArchitecture=MSIL">
+    <Reference Include="EditorUtils2010, Version=1.4.0.0, Culture=neutral, PublicKeyToken=3d1514c4742e0252, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\packages\EditorUtils.1.3.0.0\lib\net40\EditorUtils.dll</HintPath>
+      <HintPath>..\..\packages\EditorUtils2010.1.4.1.0\lib\net40\EditorUtils2010.dll</HintPath>
     </Reference>
     <Reference Include="Microsoft.VisualStudio.Text.Data, Version=10.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL" />
     <Reference Include="Microsoft.VisualStudio.Text.Logic, Version=10.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL" />
@@ -59,6 +59,7 @@
     <Reference Include="Microsoft.VisualStudio.Shell.Interop.9.0, Version=9.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
     <Reference Include="Microsoft.VisualStudio.TextManager.Interop, Version=7.1.40304.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
     <Reference Include="Microsoft.VisualStudio.TextManager.Interop.8.0, Version=8.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a" />
+    <Reference Include="Microsoft.VisualStudio.TextManager.Interop.10.0, Version=10.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL" />
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
     <Reference Include="System" />
@@ -105,7 +106,6 @@
     <Compile Include="Implementation\ExternalEdit\SnippetExternalEditAdapter.cs" />
     <Compile Include="HostFactory.cs" />
     <Compile Include="IKeyBindingService.cs" />
-    <Compile Include="ILegacySettings.cs" />
     <Compile Include="Implementation\ConflictingKey\ConflictingKeyBindingMargin.cs" />
     <Compile Include="Implementation\ConflictingKey\ConflictingKeyBindingMarginProvider.cs" />
     <Compile Include="Implementation\Misc\CSharpAdapter.cs" />
@@ -123,16 +123,20 @@
     <Compile Include="Implementation\ReSharper\ReSharperVersion.cs" />
     <Compile Include="Implementation\ReSharper\ResharperVersionutility.cs" />
     <Compile Include="Implementation\Settings\SettingSerializer.cs" />
-    <Compile Include="Implementation\Settings\SettingsMigrator.cs" />
     <Compile Include="Implementation\Settings\VimApplicationSettings.cs" />
     <Compile Include="Implementation\SharedService\DefaultSharedServiceFactory.cs" />
     <Compile Include="Implementation\SharedService\SharedServiceFactory.cs" />
     <Compile Include="IKeyboardOptionsProvider.cs" />
+    <Compile Include="Implementation\ToastNotification\ToastControl.xaml.cs">
+      <DependentUpon>ToastControl.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Implementation\ToastNotification\ToastNotificationService.cs" />
+    <Compile Include="Implementation\ToastNotification\ToastNotificationServiceProvider.cs" />
     <Compile Include="Implementation\UpgradeNotification\LinkBanner.xaml.cs">
       <DependentUpon>LinkBanner.xaml</DependentUpon>
     </Compile>
-    <Compile Include="Implementation\UpgradeNotification\BackspaceNotificationMarginProvider.cs" />
-    <Compile Include="TextEditorFontProperties.cs" />
+    <Compile Include="Implementation\UpgradeNotification\VimRcLoadNotificationMarginProvider.cs" />
+    <Compile Include="IToastNotifaction.cs" />
     <Compile Include="Implementation\VisualAssist\IVisualAssistUtil.cs" />
     <Compile Include="Implementation\VisualAssist\VisualAssistKeyProcessor.cs" />
     <Compile Include="Implementation\VisualAssist\VisualAssistMargin.xaml.cs">
@@ -141,7 +145,7 @@
     <Compile Include="Implementation\VisualAssist\VisualAssistUtil.cs" />
     <Compile Include="Implementation\VisualAssist\VisualAssistSelectionAdapter.cs" />
     <Compile Include="Implementation\Misc\VsAdapter.cs" />
-    <Compile Include="Implementation\Misc\VsKeyProcessorProvider.cs" />
+    <Compile Include="Implementation\Misc\VsVimKeyProcessorProvider.cs" />
     <Compile Include="IPowerToolsUtil.cs" />
     <Compile Include="IReportDesignerUtil.cs" />
     <Compile Include="Implementation\ReSharper\IResharperUtil.cs" />
@@ -161,7 +165,7 @@
     </Compile>
     <Compile Include="VsCommandTarget.cs" />
     <Compile Include="VsFilterKeysAdapter.cs" />
-    <Compile Include="Implementation\Misc\VsKeyProcessor.cs" />
+    <Compile Include="Implementation\Misc\VsVimKeyProcessor.cs" />
     <Compile Include="VsVimHost.cs" />
   </ItemGroup>
   <ItemGroup>
@@ -180,6 +184,10 @@
   </ItemGroup>
   <ItemGroup>
     <Page Include="Implementation\OptionPages\KeyboardSettingsControl.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Implementation\ToastNotification\ToastControl.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

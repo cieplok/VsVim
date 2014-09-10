@@ -51,14 +51,14 @@ namespace Vim.UI.Wpf
             get;
         }
 
-        public abstract IFontProperties FontProperties
+        public virtual bool IsAutoCommandEnabled
         {
-            get;
+            get { return true; }
         }
 
         public virtual DefaultSettings DefaultSettings
         {
-            get { return DefaultSettings.GVim74; }
+            get { return DefaultSettings.GVim73; }
         }
 
         protected VimHost(
@@ -128,9 +128,19 @@ namespace Vim.UI.Wpf
 
         public abstract void FormatLines(ITextView textView, SnapshotLineRange range);
 
+        public virtual FSharpOption<int> GetNewLineIndent(ITextView textView, ITextSnapshotLine contextLine, ITextSnapshotLine newLine)
+        {
+            return FSharpOption<int>.None;
+        }
+
         public abstract string GetName(ITextBuffer value);
 
         public abstract int GetTabIndex(ITextView textView);
+
+        public virtual WordWrapStyles GetWordWrapStyle(ITextView textView)
+        {
+            return WordWrapStyles.VisibleGlyphs | WordWrapStyles.WordWrap;
+        }
 
         public virtual bool TryGetFocusedTextView(out ITextView textView)
         {
@@ -201,13 +211,13 @@ namespace Vim.UI.Wpf
             return true;
         }
 
-        public abstract HostResult LoadFileIntoExistingWindow(string filePath, ITextView textView);
+        public abstract bool LoadFileIntoExistingWindow(string filePath, ITextView textView);
 
-        public abstract HostResult LoadFileIntoNewWindow(string filePath);
+        public abstract bool LoadFileIntoNewWindow(string filePath);
 
-        public abstract HostResult Make(bool jumpToFirstError, string arguments);
+        public abstract void Make(bool jumpToFirstError, string arguments);
 
-        public abstract HostResult MoveFocus(ITextView textView, Direction direction);
+        public abstract void MoveFocus(ITextView textView, Direction direction);
 
         public abstract bool NavigateTo(VirtualSnapshotPoint point);
 
@@ -216,16 +226,16 @@ namespace Vim.UI.Wpf
             Application.Current.Shutdown();
         }
 
-        public virtual bool Reload(ITextBuffer textBuffer)
+        public virtual bool Reload(ITextView textView)
         {
             ITextDocument document;
-            if (!_textDocumentFactoryService.TryGetTextDocument(textBuffer, out document))
+            if (!_textDocumentFactoryService.TryGetTextDocument(textView.TextDataModel.DocumentBuffer, out document))
             {
                 return false;
             }
 
-            document.Reload(EditOptions.DefaultMinimalChange);
-            return true;
+            var result = document.Reload(EditOptions.DefaultMinimalChange);
+            return result == ReloadResult.Succeeded || result == ReloadResult.SucceededWithCharacterSubstitutions;
         }
 
         /// <summary>
@@ -253,7 +263,7 @@ namespace Vim.UI.Wpf
             }
         }
 
-        public abstract void RunVisualStudioCommand(string command, string argument);
+        public abstract void RunVisualStudioCommand(ITextView textView, string command, string argument);
 
         public virtual bool Save(ITextBuffer textBuffer)
         {
@@ -281,6 +291,14 @@ namespace Vim.UI.Wpf
             return true;
         }
 
+        /// <summary>
+        /// By default the host will only load vsvimrc files
+        /// </summary>
+        public virtual bool ShouldIncludeRcFile(VimRcPath vimRcPath)
+        {
+            return vimRcPath.VimRcKind == VimRcKind.VsVimRc;
+        }
+
         public virtual bool SaveTextAs(string text, string filePath)
         {
             try
@@ -294,9 +312,19 @@ namespace Vim.UI.Wpf
             }
         }
 
-        public abstract HostResult SplitViewHorizontally(ITextView value);
+        public abstract void SplitViewHorizontally(ITextView value);
 
-        public abstract HostResult SplitViewVertically(ITextView value);
+        public abstract void SplitViewVertically(ITextView value);
+
+        public virtual void VimCreated(IVim vim)
+        {
+
+        }
+
+        public virtual void VimDataCreated(IVimData vimData)
+        {
+
+        }
 
         public virtual void VimRcLoaded(VimRcState vimRcState, IVimLocalSettings localSettings, IVimWindowSettings windowSettings)
         {
@@ -438,6 +466,11 @@ namespace Vim.UI.Wpf
             get { return AutoSynchronizeSettings; }
         }
 
+        bool IVimHost.IsAutoCommandEnabled
+        {
+            get { return IsAutoCommandEnabled; }
+        }
+
         DefaultSettings IVimHost.DefaultSettings
         {
             get { return DefaultSettings; }
@@ -478,6 +511,11 @@ namespace Vim.UI.Wpf
             FormatLines(textView, range);
         }
 
+        FSharpOption<int> IVimHost.GetNewLineIndent(ITextView textView, ITextSnapshotLine contextLine, ITextSnapshotLine newLine)
+        {
+            return GetNewLineIndent(textView, contextLine, newLine);
+        }
+
         FSharpOption<ITextView> IVimHost.GetFocusedTextView()
         {
             ITextView textView;
@@ -494,6 +532,11 @@ namespace Vim.UI.Wpf
         int IVimHost.GetTabIndex(ITextView textView)
         {
             return GetTabIndex(textView);
+        }
+
+        WordWrapStyles IVimHost.GetWordWrapStyle(ITextView textView)
+        {
+            return GetWordWrapStyle(textView);
         }
 
         bool IVimHost.GoToDefinition()
@@ -531,24 +574,24 @@ namespace Vim.UI.Wpf
             return IsReadOnly(textBuffer);
         }
 
-        HostResult IVimHost.LoadFileIntoExistingWindow(string filePath, ITextView textView)
+        bool IVimHost.LoadFileIntoExistingWindow(string filePath, ITextView textView)
         {
             return LoadFileIntoExistingWindow(filePath, textView);
         }
 
-        HostResult IVimHost.LoadFileIntoNewWindow(string filePath)
+        bool IVimHost.LoadFileIntoNewWindow(string filePath)
         {
             return LoadFileIntoNewWindow(filePath);
         }
 
-        HostResult IVimHost.Make(bool jumpToFirstError, string arguments)
+        void IVimHost.Make(bool jumpToFirstError, string arguments)
         {
-            return Make(jumpToFirstError, arguments);
+            Make(jumpToFirstError, arguments);
         }
 
-        HostResult IVimHost.MoveFocus(ITextView textView, Direction direction)
+        void IVimHost.MoveFocus(ITextView textView, Direction direction)
         {
-            return MoveFocus(textView, direction);
+            MoveFocus(textView, direction);
         }
 
         bool IVimHost.NavigateTo(VirtualSnapshotPoint point)
@@ -561,9 +604,9 @@ namespace Vim.UI.Wpf
             Quit();
         }
 
-        bool IVimHost.Reload(ITextBuffer value)
+        bool IVimHost.Reload(ITextView textView)
         {
-            return Reload(value);
+            return Reload(textView);
         }
 
         string IVimHost.RunCommand(string command, string arguments, IVimData vimData)
@@ -571,9 +614,9 @@ namespace Vim.UI.Wpf
             return RunCommand(command, arguments, vimData);
         }
 
-        void IVimHost.RunVisualStudioCommand(string command, string argument)
+        void IVimHost.RunVisualStudioCommand(ITextView textView, string command, string argument)
         {
-            RunVisualStudioCommand(command, argument);
+            RunVisualStudioCommand(textView, command, argument);
         }
 
         bool IVimHost.Save(ITextBuffer value)
@@ -591,14 +634,19 @@ namespace Vim.UI.Wpf
             return ShouldCreateVimBuffer(textView);
         }
 
-        HostResult IVimHost.SplitViewHorizontally(ITextView value)
+        bool IVimHost.ShouldIncludeRcFile(VimRcPath vimRcPath)
         {
-            return SplitViewHorizontally(value);
+            return ShouldIncludeRcFile(vimRcPath);
         }
 
-        HostResult IVimHost.SplitViewVertically(ITextView value)
+        void IVimHost.SplitViewHorizontally(ITextView value)
         {
-            return SplitViewVertically(value);
+            SplitViewHorizontally(value);
+        }
+
+        void IVimHost.SplitViewVertically(ITextView value)
+        {
+            SplitViewVertically(value);
         }
 
         bool IVimHost.TryCustomProcess(ITextView textView, InsertCommand command)
@@ -614,6 +662,11 @@ namespace Vim.UI.Wpf
         bool IVimHost.IsFocused(ITextView textView)
         {
             return IsFocused(textView);
+        }
+
+        void IVimHost.VimCreated(IVim vim)
+        {
+            VimCreated(vim);
         }
 
         void IVimHost.VimRcLoaded(VimRcState vimRcState, IVimLocalSettings localSettings, IVimWindowSettings windowSettings)
