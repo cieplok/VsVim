@@ -218,6 +218,17 @@
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Import Condition="Exists($(VsSdkTargets))" Project="$(VsSdkTargets)" />
   <Import Project="$(SolutionDir)\.nuget\nuget.targets" />
+  <PropertyGroup>
+    <PreBuildEvent>IF '$(VisualStudioVersion)' == '' Or '$(VisualStudioVersion)' == '10.0' (
+    IF NOT EXIST "$(SolutionDir)Src\VsSpecific\Vs2012\$(OutDir)Vim.VisualStudio.Vs2012.dll" (
+        $(MSBuildBinPath)\msbuild.exe /nologo /verbosity:q /p:Configuration=$(ConfigurationName) $(SolutionDir)Src\VsSpecific\Vs2012\Vs2012.csproj
+    )
+
+    IF NOT EXIST "$(SolutionDir)Src\VsSpecific\Vs2013\$(OutDir)Vim.VisualStudio.Vs2013.dll" (
+        $(MSBuildBinPath)\msbuild.exe /nologo /verbosity:q /p:Configuration=$(ConfigurationName) $(SolutionDir)Src\VsSpecific\Vs2013\Vs2013.csproj
+    )
+)</PreBuildEvent>
+  </PropertyGroup>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">
